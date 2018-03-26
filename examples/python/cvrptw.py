@@ -32,7 +32,6 @@
 
    The optimization engine uses local search to improve solutions, first
    solutions being generated using a cheapest addition heuristic.
-
 """
 
 import math
@@ -44,7 +43,6 @@ from ortools.constraint_solver import routing_enums_pb2
 def distance(x1, y1, x2, y2):
     # Manhattan distance
     dist = abs(x1 - x2) + abs(y1 - y2)
-
     return dist
 
 # Distance callback
@@ -73,8 +71,6 @@ class CreateDistanceCallback(object):
     return self.matrix[from_node][to_node]
 
 
-
-
 # Demand callback
 class CreateDemandCallback(object):
   """Create callback to get demands at location node."""
@@ -84,8 +80,6 @@ class CreateDemandCallback(object):
 
   def Demand(self, from_node, to_node):
     return self.matrix[from_node]
-
-
 
 # Service time (proportional to demand) callback.
 class CreateServiceTimeCallback(object):
@@ -101,6 +95,8 @@ class CreateServiceTimeCallback(object):
 
 # Create total_time callback (equals service time plus travel time).
 class CreateTotalTimeCallback(object):
+  """Create callback to get total times between locations."""
+
   def __init__(self, service_time_callback, dist_callback, speed):
     self.service_time_callback = service_time_callback
     self.dist_callback = dist_callback
@@ -112,7 +108,6 @@ class CreateTotalTimeCallback(object):
     return service_time + travel_time
 
 def main():
-
   # Create the data.
   data = create_data_array()
   locations = data[0]
@@ -143,15 +138,13 @@ def main():
     # node added to the route.
 
     # Put callbacks to the distance function and travel time functions here.
-
     dist_between_locations = CreateDistanceCallback(locations)
     dist_callback = dist_between_locations.Distance
-
     routing.SetArcCostEvaluatorOfAllVehicles(dist_callback)
-    demands_at_locations = CreateDemandCallback(demands)
-    demands_callback = demands_at_locations.Demand
 
     # Adding capacity dimension constraints.
+    demands_at_locations = CreateDemandCallback(demands)
+    demands_callback = demands_at_locations.Demand
     VehicleCapacity = 100;
     NullCapacitySlack = 0;
     fix_start_cumul_to_zero = True
@@ -159,13 +152,15 @@ def main():
 
     routing.AddDimension(demands_callback, NullCapacitySlack, VehicleCapacity,
                          fix_start_cumul_to_zero, capacity)
-    
-    # Adding time dimension constraints.
+
+    # Add time dimension constraints.
     time_per_demand_unit = 300
     horizon = 24 * 3600
     time = "Time"
-    tw_duration = 5 * 3600
     speed = 10
+
+    # tw_duration is the width of the time windows.
+    tw_duration = 5 * 3600
 
     service_times = CreateServiceTimeCallback(demands, time_per_demand_unit)
     service_time_callback = service_times.ServiceTime
@@ -174,22 +169,18 @@ def main():
     total_time_callback = total_times.TotalTime
 
     # Add a dimension for time-window constraints and limits on the start times and end times.
-
     routing.AddDimension(total_time_callback,  # total time function callback
                          horizon,
                          horizon,
                          fix_start_cumul_to_zero,
                          time)
-    
-    
+
     # Add limit on size of the time windows.
     time_dimension = routing.GetDimensionOrDie(time)
 
     for order in xrange(1, num_locations):
       start = start_times[order]
       time_dimension.CumulVar(order).SetRange(start, start + tw_duration)
-    
-
 
     # Solve displays a solution if any.
     assignment = routing.SolveWithParameters(search_parameters)
@@ -200,7 +191,7 @@ def main():
       start_times = data[2]
       size = len(locations)
       # Solution cost.
-      print ("Total distance of all routes: " , str(assignment.ObjectiveValue()))
+      print ("Total distance of all routes: " , str(assignment.ObjectiveValue()), '\n')
       # Inspect solution.
       capacity_dimension = routing.GetDimensionOrDie(capacity);
       time_dimension = routing.GetDimensionOrDie(time);
@@ -230,20 +221,18 @@ def main():
                       load=assignment.Value(load_var),
                       tmin=str(assignment.Min(time_var)),
                       tmax=str(assignment.Max(time_var)))
-        print (plan_output)
+        print (plan_output , '\n')
     else:
       print ('No solution found.')
   else:
     print ('Specify an instance greater than 0.')
 
-
-
 def create_data_array():
 
-  locations = [[82, 76], [96, 44], [50, 5], [49, 8], [13, 7], [29, 89], [58, 30], [84, 39],
-               [14, 24], [12, 39], [3, 82], [5, 10], [98, 52], [84, 25], [61, 59], [1, 65],
-               [88, 51], [91, 2], [19, 32], [93, 3], [50, 93], [98, 14], [5, 42], [42, 9],
-               [61, 62], [9, 97], [80, 55], [57, 69], [23, 15], [20, 70], [85, 60], [98, 5]]
+  locations = [[82, 76], [96, 44], [50,  5], [49,  8], [13,  7], [29, 89], [58, 30], [84, 39],
+               [14, 24], [12, 39], [ 3, 82], [ 5, 10], [98, 52], [84, 25], [61, 59], [ 1, 65],
+               [88, 51], [91,  2], [19, 32], [93,  3], [50, 93], [98, 14], [ 5, 42], [42,  9],
+               [61, 62], [ 9, 97], [80, 55], [57, 69], [23, 15], [20, 70], [85, 60], [98,  5]]
 
   demands =  [0, 19, 21, 6, 19, 7, 12, 16, 6, 16, 8, 14, 21, 16, 3, 22, 18,
              19, 1, 24, 8, 12, 4, 8, 24, 24, 2, 20, 15, 2, 14, 9]
