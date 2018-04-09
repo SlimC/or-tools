@@ -29,8 +29,8 @@ class DataProblem():
     def __init__(self):
         """Initializes the data for the problem"""
         # Location in block unit
-        self._locations = \
-            ((4, 4), # depot
+        locations = \
+            [(4, 4), # depot
              (2, 0), (8, 0),
              (0, 1), (1, 1),
              (5, 2), (7, 2),
@@ -38,7 +38,8 @@ class DataProblem():
              (5, 5), (8, 5),
              (1, 6), (2, 6),
              (3, 7), (6, 7),
-             (0, 8), (7, 8))
+             (0, 8), (7, 8)]
+        self._locations = [(loc[0]*self.block_width, loc[1]*self.block_height) for loc in locations]
         self._depot = 0
 
     @property
@@ -101,29 +102,28 @@ def print_svg(data):
             y=8*data.block_height,
             x=i*data.block_width,
             style=line_style))
-    # Depot
-    circle_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
+    # Locations (blue)
+    depot_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
         stroke=black,
         fill=white)
-    print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
-        x=data.locations[data.depot][0]*data.block_width,
-        y=data.locations[data.depot][1]*data.block_height,
-        style=circle_style))
-    # Locations (blue)
-    circle_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
+    location_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
         stroke=blue,
         fill=white)
-    text_style = r'style="text-anchor:middle;font-size:20"'
+    text_style = r'style="text-anchor:middle;font-weight:bold;font-size:20"'
     for idx, loc in enumerate(data.locations):
-        if idx == 0:
-            continue
-        print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
-            x=loc[0]*data.block_width,
-            y=loc[1]*data.block_height,
-            style=circle_style))
+        if idx == data.depot:
+            print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
+                x=data.locations[data.depot][0],
+                y=data.locations[data.depot][1],
+                style=depot_style))
+        else:
+            print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
+                x=loc[0],
+                y=loc[1],
+                style=location_style))
         print(r'<text x="{x}" y="{y}" dy="10" {style}>{id}</text>'.format(
-            x=loc[0]*data.block_width,
-            y=loc[1]*data.block_height,
+            x=loc[0],
+            y=loc[1],
             style=text_style,
             id=idx))
     print(r'</svg>')
