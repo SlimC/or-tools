@@ -28,7 +28,7 @@ class DataProblem():
     """Stores the data for the problem"""
     def __init__(self):
         """Initializes the data for the problem"""
-        # Location in block unit
+        # Locations in block unit
         locations = \
             [(4, 4), # depot
              (2, 0), (8, 0),
@@ -39,6 +39,7 @@ class DataProblem():
              (1, 6), (2, 6),
              (3, 7), (6, 7),
              (0, 8), (7, 8)]
+        # locations in meters using the block dimension defined
         self._locations = [(loc[0]*self.block_width, loc[1]*self.block_height) for loc in locations]
         self._depot = 0
 
