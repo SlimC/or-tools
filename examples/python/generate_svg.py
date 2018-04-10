@@ -23,6 +23,7 @@
 
 from __future__ import print_function
 import argparse
+import math
 from six.moves import xrange
 from ortools.constraint_solver import pywrapcp
 from ortools.constraint_solver import routing_enums_pb2
@@ -429,6 +430,8 @@ class SVGPrinter():
         for idx, loc in enumerate(self.data.locations):
             if idx == self.data.depot:
                 continue
+            if self._args['capacity'] is True:
+                color = self.color_palette.value(int(math.log(self.data.demands[idx], 2)))
             self.svg.draw_circle(loc, self.radius, self.stroke_width, color, 'white')
             self.svg.draw_text(idx, loc, self.radius, 'none', color)
 
@@ -457,6 +460,8 @@ class SVGPrinter():
         previous_loc_idx = None
         for loc_idx in route:
             if loc_idx != self.data.depot:
+                #if self._args['capacity'] is True:
+                #    color = self.color_palette.value(int(math.log(self.data.demands[loc_idx], 2)))
                 loc = self.data.locations[loc_idx]
                 self.svg.draw_circle(loc, self.radius, self.stroke_width, color, 'white')
                 self.svg.draw_text(loc_idx, loc, self.radius, 'none', color)
