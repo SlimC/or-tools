@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # This Python file uses the following encoding: utf-8
 # Copyright 2018 Google LLC
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,13 +22,37 @@
 """
 
 from __future__ import print_function
+import argparse
 from six.moves import xrange
+from ortools.constraint_solver import pywrapcp
+from ortools.constraint_solver import routing_enums_pb2
 
 # Problem Data Definition
+class Vehicle():
+    """Stores the property of a vehicle"""
+    def __init__(self):
+        """Initializes the vehicle properties"""
+        self._capacity = 25
+        # Travel speed: 15km/h to convert in m/s
+        self._speed = 15 / 3.6
+
+    @property
+    def capacity(self):
+        """Gets vehicle capacity"""
+        return self._capacity
+
+    @property
+    def speed(self):
+        """Gets the average travel speed of a vehicle"""
+        return self._speed
+
 class DataProblem():
     """Stores the data for the problem"""
     def __init__(self):
         """Initializes the data for the problem"""
+        self._vehicle = Vehicle()
+        self._num_vehicles = 5
+
         # Locations in block unit
         locations = \
             [(4, 4), # depot
@@ -40,7 +65,8 @@ class DataProblem():
              (3, 7), (6, 7),
              (0, 8), (7, 8)]
         # locations in meters using the block dimension defined
-        self._locations = [(loc[0]*self.block_width, loc[1]*self.block_height) for loc in locations]
+        self._locations = [(loc[0]*self.block_width, loc[1]*self.block_height) \
+                for loc in locations]
         self._depot = 0
 
     @property
@@ -52,6 +78,16 @@ class DataProblem():
     def block_height(self):
         """Gets Block size North to South"""
         return 80
+
+    @property
+    def vehicle(self):
+        """Gets a vehicle"""
+        return self._vehicle
+
+    @property
+    def num_vehicles(self):
+        """Gets number of vehicles"""
+        return self._num_vehicles
 
     @property
     def locations(self):
@@ -73,68 +109,193 @@ class DataProblem():
         """Gets depot location index"""
         return self._depot
 
-def print_svg(data):
-    """print a full svg document on cout"""
-    print(r'<svg xmlns:xlink="http://www.w3.org/1999/xlink" '
-          'xmlns="http://www.w3.org/2000/svg" version="1.1"\n'
-          'width="{width}" height="{height}" '
-          'viewBox="-25 -25 {width_margin} {height_margin}">'.format(
-              width=8*data.block_width,
-              height=8*data.block_height,
-              width_margin=8*data.block_width+50,
-              height_margin=8*data.block_height+50))
+# Distance callback
+class CreateDistanceCallback(object): # pylint: disable=too-few-public-methods
+    """Creates callback to return distance between points."""
+    def __init__(self, data):
+        """Initializes the distance matrix."""
+        self._distance = {}
 
-    red = r'#EA4335'
-    green = r'#34A853'
-    blue = r'#4285F4'
-    yellow = r'#FBBC05'
-    black = r'#101010'
-    white = r'#FFFFFF'
-    # Horizontal streets
-    line_style = r'style="stroke:#969696;stroke-width:1"'
-    for i in xrange(9):
-        print(r'<line x1="0" y1="{y}" x2="{x}" y2="{y}" {style}/>'.format(
-            y=i*data.block_height,
-            x=8*data.block_width,
-            style=line_style))
-    # Vertical streets
-    for i in xrange(9):
-        print(r'<line x1="{x}" y1="0" x2="{x}" y2="{y}" {style}/>'.format(
-            y=8*data.block_height,
-            x=i*data.block_width,
-            style=line_style))
-    # Locations (blue)
-    depot_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
-        stroke=black,
-        fill=white)
-    location_style = r'style="stroke:{stroke};stroke-width:4;fill:{fill}"'.format(
-        stroke=blue,
-        fill=white)
-    text_style = r'style="text-anchor:middle;font-weight:bold;font-size:20"'
-    for idx, loc in enumerate(data.locations):
-        if idx == data.depot:
-            print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
-                x=data.locations[data.depot][0],
-                y=data.locations[data.depot][1],
-                style=depot_style))
+        # precompute distance between location to have distance callback in O(1)
+        for from_node in xrange(data.num_locations):
+            self._distance[from_node] = {}
+            for to_node in xrange(data.num_locations):
+                if from_node == to_node:
+                    self._distance[from_node][to_node] = 0
+                else:
+                    self._distance[from_node][to_node] = (
+                        data.manhattan_distance(from_node, to_node))
+
+    def distance(self, from_node, to_node):
+        """Returns the manhattan distance between the two nodes"""
+        return self._distance[from_node][to_node]
+
+# Demand callback
+class CreateDemandCallback(object): # pylint: disable=too-few-public-methods
+    """Creates callback to get demands at each location."""
+    def __init__(self, data):
+        """Initializes the demand array."""
+        self._demands = data.demands
+
+    def demand(self, from_node, to_node):
+        """Returns the demand of the current node"""
+        del to_node
+        return self._demands[from_node]
+
+# Time callback (equals to: service time + travel time).
+class CreateTimeCallback(object):
+    """Creates callback to get total times between locations."""
+    @staticmethod
+    def service_time(data, node):
+        """Gets the service time for the specified location."""
+        return data.demands[node] * data.time_per_demand_unit
+
+    @staticmethod
+    def travel_time(data, from_node, to_node):
+        """Gets the travel times between two locations."""
+        if from_node == to_node:
+            travel_time = 0
         else:
-            print(r'<circle cx="{x}" cy="{y}" r="20" {style}/>'.format(
+            travel_time = data.manhattan_distance(from_node, to_node) / data.vehicle.speed
+        return travel_time
+
+    def __init__(self, data):
+        """Initializes the total time matrix."""
+        self._total_time = {}
+
+        # precompute total time to have time callback in O(1)
+        for from_node in xrange(data.num_locations):
+            self._total_time[from_node] = {}
+            for to_node in xrange(data.num_locations):
+                if from_node == to_node:
+                    self._total_time[from_node][to_node] = 0
+                else:
+                    self._total_time[from_node][to_node] = (
+                        self.service_time(data, from_node) +
+                        self.travel_time(data, from_node, to_node))
+
+    def time(self, from_node, to_node):
+        """Returns the total time between the two nodes"""
+        return self._total_time[from_node][to_node]
+
+class SVGPrinter():
+    """Generate Problem as svg file on stdout"""
+    def __init__(self, args, data):
+        """Initializes the printer"""
+        self._args = args
+        self._data = data
+        self.red = r'#EA4335'
+        self.green = r'#34A853'
+        self.blue = r'#4285F4'
+        self.yellow = r'#FBBC05'
+        self.black = r'#101010'
+        self.white = r'#FFFFFF'
+
+    @property
+    def data(self):
+        """Gets the Data Problem"""
+        return self._data
+
+    def _print_header(self):
+        """Prints svg header"""
+        margin = 25
+        print(r'<svg xmlns:xlink="http://www.w3.org/1999/xlink" '
+              'xmlns="http://www.w3.org/2000/svg" version="1.1"\n'
+              'width="{width}" height="{height}" '
+              'viewBox="-{m} -{m} {width_margin} {height_margin}">'.format(
+                  m=margin,
+                  width=8*self.data.block_width+2*margin,
+                  height=8*self.data.block_height+2*margin,
+                  width_margin=8*self.data.block_width+2*margin,
+                  height_margin=8*self.data.block_height+2*margin))
+
+    @staticmethod
+    def _print_footer():
+        """Prints svg footer"""
+        print(r'</svg>')
+
+    def _print_grid(self):
+        """Prints the city grid"""
+        # Horizontal streets
+        line_style = r'style="stroke:#969696;stroke-width:1"'
+        for i in xrange(9):
+            print(r'<line x1="0" y1="{y}" x2="{x}" y2="{y}" {style}/>'.format(
+                y=i*self.data.block_height,
+                x=8*self.data.block_width,
+                style=line_style))
+        # Vertical streets
+        for i in xrange(9):
+            print(r'<line x1="{x}" y1="0" x2="{x}" y2="{y}" {style}/>'.format(
+                y=8*self.data.block_height,
+                x=i*self.data.block_width,
+                style=line_style))
+
+    def _print_locations(self):
+        """Prints the locations"""
+        stroke_width = 5
+        circle_radius = 25
+        text_width = circle_radius - 5
+        # Locations (depot:black, location:blue)
+        depot_style = r'style="stroke-width:{sz};stroke:{fg};fill:{bg}"'.format(
+            sz=stroke_width,
+            fg=self.black,
+            bg=self.white)
+        location_style = r'style="stroke-width:{sz};stroke:{fg};fill:{bg}"'.format(
+            sz=stroke_width,
+            fg=self.blue,
+            bg=self.white)
+        text_style = r'style="text-anchor:middle;font-size:{sz};font-weight:bold"'.format(
+            sz=text_width)
+        for idx, loc in enumerate(self.data.locations):
+            if idx == self.data.depot:
+                print(r'<circle cx="{cx}" cy="{cy}" r="{r}" {style}/>'.format(
+                    cx=loc[0],
+                    cy=loc[1],
+                    r=circle_radius,
+                    style=depot_style))
+            else:
+                print(r'<circle cx="{cx}" cy="{cy}" r="{r}" {style}/>'.format(
+                    cx=loc[0],
+                    cy=loc[1],
+                    r=circle_radius,
+                    style=location_style))
+            print(r'<text x="{x}" y="{y}" dy="{dy}" {style}>{id}</text>'.format(
                 x=loc[0],
                 y=loc[1],
-                style=location_style))
-        print(r'<text x="{x}" y="{y}" dy="10" {style}>{id}</text>'.format(
-            x=loc[0],
-            y=loc[1],
-            style=text_style,
-            id=idx))
-    print(r'</svg>')
+                dy=text_width / 2,
+                style=text_style,
+                id=idx))
+
+    def print(self):
+        """Prints a full svg document on stdout"""
+        self._print_header()
+        self._print_grid()
+        self._print_locations()
+        self._print_footer()
 
 def main():
     """Entry point of the program"""
+    parser = argparse.ArgumentParser(description='Output VRP as svg image.')
+    parser.add_argument('-c', '--capacity', help='use capacity constraints')
+    parser.add_argument('-tw', '--time-window', help='use time-window constraints')
+    parser.add_argument('-f', '--fuel', help='use fuel constraints')
+    parser.add_argument('-r', '--ressource', help='use ressource constraints')
+    parser.add_argument('-s', '--solution', help='print solution')
+    args = vars(parser.parse_args())
+
     # Instanciate the data problem.
     data = DataProblem()
+
+    # Create solver if needed
+    if args['solution'] is True:
+        routing = pywrapcp.RoutingModel(data.num_locations, data.num_vehicles, data.depot)
+        dist_callback = CreateDistanceCallback(data).distance
+        routing.SetArcCostEvaluatorOfAllVehicles(dist_callback)
+
+
     # Print svg on cout
-    print_svg(data)
+    printer = SVGPrinter(args, data)
+    printer.print()
 
 if __name__ == '__main__':
     main()
