@@ -431,9 +431,27 @@ class SVGPrinter():
             if idx == self.data.depot:
                 continue
             if self._args['capacity'] is True:
-                color = self.color_palette.value(int(math.log(self.data.demands[idx], 2)))
+                cap = self.data.demands[idx]
+                color_cap = self.color_palette.value(int(math.log(cap, 2)))
+                self.svg.draw_text(
+                    cap,
+                    [x+y for x, y in zip(loc, [self.radius, self.radius])],
+                    self.radius,
+                    'none',
+                    color_cap)
             self.svg.draw_circle(loc, self.radius, self.stroke_width, color, 'white')
             self.svg.draw_text(idx, loc, self.radius, 'none', color)
+
+    def draw_demands(self):
+        """Draws all the demands"""
+        print(r'<!-- Print demands -->')
+        for idx, loc in enumerate(self.data.locations):
+            if idx == self.data.depot:
+                continue
+            demand = self.data.demands[idx]
+            position = [x+y for x, y in zip(loc, [self.radius, self.radius])]
+            color = self.color_palette.value(int(math.log(demand, 2)))
+            self.svg.draw_text(demand, position, self.radius, 'none', color)
 
     def draw_depot(self):
         """Draws the depot"""
@@ -496,7 +514,7 @@ class SVGPrinter():
 
     def print(self):
         """Prints a full svg document on stdout"""
-        margin = self.radius + 2
+        margin = self.radius*2 + 2
         size = [8*self.data.city_block.width, 8*self.data.city_block.height]
         self.svg.header(size, margin)
         self.svg.definitions(self.color_palette.colors)
@@ -506,6 +524,8 @@ class SVGPrinter():
         else:
             self.draw_routes()
         self.draw_depot()
+        if self._args['capacity'] is True:
+            self.draw_demands()
         self.svg.footer()
 
 ########
